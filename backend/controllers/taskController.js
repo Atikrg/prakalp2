@@ -511,16 +511,29 @@ exports.empOverviewTaskDtlsIndAggView = (req, res) => {
   const assignBy = req.query.assignBy;
   const projectName = req.query.projectName;
 
-  // First query to get task IDs for the given project name
+  // Basic validation for required parameters
+  if (!assignBy || !projectName) {
+    return res.status(400).json({ error: 'assignBy and projectName are required' });
+  }
+
+  console.log("project name - ", projectName);
+
+  // Query to get task IDs for the given project name
   const initialQuery = `
     SELECT id as tasks 
     FROM Task 
     WHERE projectName = ?;
   `;
 
+  // Query to count tasks assigned to the specific employee
+  const query1 = `
+    SELECT COUNT(DISTINCT taskid) as tasks
+    FROM Taskemp
+    WHERE taskid IN (? /* Array parameter for SQL query */) 
+      AND AssignedTo_emp = ?;
+  `;
 
-
-  // Third query to sum up time to complete and actual time taken for tasks assigned to a specific employee
+  // Query to sum up time to complete and actual time taken for tasks assigned to a specific employee
   const query2 = `
     SELECT SUM(p.timetocomplete) as Required, SUM(te.actualtimetocomplete_emp) as Taken 
     FROM Taskemp te 
@@ -529,43 +542,51 @@ exports.empOverviewTaskDtlsIndAggView = (req, res) => {
       AND p.ProjectName = ?;
   `;
 
-  // Execute the initial query
+  // Execute the initial query to get task IDs
   db.query(initialQuery, [projectName], (errorInitial, resultsInitial) => {
     if (errorInitial) {
-      return res.status(500).json({ error: errorInitial.message });
+      console.error('Error executing initial query:', errorInitial.message);
+      return res.status(500).json({ error: 'Database query error' });
     }
 
-    // Extract task IDs and format them as a comma-separated string
-    const taskIds = resultsInitial.map(task => task.tasks).join(',');
+    // Check if tasks were found
+    if (resultsInitial.length === 0) {
+      return res.status(404).json({ error: 'No tasks found for the given project' });
+    }
 
-    const query1 = `
-      SELECT COUNT(DISTINCT taskid) as tasks
-      FROM Taskemp
-      WHERE taskid IN (${taskIds}) 
-        AND AssignedTo_emp = ?;
-    `;
+    // Extract task IDs and format them as an array
+    const taskIds = resultsInitial.map(task => task.tasks);
+
+    // Ensure taskIds is not empty before using it in the query
+    if (taskIds.length === 0) {
+      return res.status(404).json({ error: 'No tasks found for the given project' });
+    }
 
     // Execute the first query using the obtained task IDs
-    db.query(query1, [assignBy], (error1, results1) => {
+    db.query(query1, [taskIds, assignBy], (error1, results1) => {
       if (error1) {
-        return res.status(500).json({ error: error1.message });
+        console.error('Error executing task count query:', error1.message);
+        return res.status(500).json({ error: 'Database query error' });
       }
 
-      // Execute the second query
+      // Execute the second query to get required and taken times
       db.query(query2, [assignBy, projectName], (error2, results2) => {
         if (error2) {
-          return res.status(500).json({ error: error2.message });
+          console.error('Error executing required and taken times query:', error2.message);
+          return res.status(500).json({ error: 'Database query error' });
         }
 
+        // Return the results in the response
         res.json({
           tasks: results1[0].tasks,
-          required: results2[0].Required,
-          taken: results2[0].Taken
+          required: results2[0].Required || 0,
+          taken: results2[0].Taken || 0
         });
       });
     });
   });
 };
+
 
 exports.empOverviewIndAggPATimes = (req, res) => {
   const { projectName, userId, startDate } = req.query;

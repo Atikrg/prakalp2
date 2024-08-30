@@ -367,13 +367,24 @@ exports.updateProjectSorting = (req, res ) => {
 
 //projectoverview Project fectching api 
 exports.projectOverview = (req, res) => {
-  const token = req.query.token; // Use query parameter for GET request
+  console.log(req.body);
+
+  const token = req.query.token; // Assuming it's a POST request, use req.body for token
+
+  console.log("Token - ",token);
 
   if (!token) {
     return res.status(400).send('Token is required');
   }
 
-  const userData = decryptToken(token);
+  let userData;
+  try {
+    userData = decryptToken(token); // Ensure decryptToken handles errors gracefully
+  } catch (error) {
+    console.error('Error decrypting token:', error);
+    return res.status(400).send('Invalid token');
+  }
+
   const AssignBy = userData.Type;
 
   let selectProjectQuery;
@@ -410,15 +421,16 @@ exports.projectOverview = (req, res) => {
           ProjectName: project.ProjectName,
           sales_order: project.sales_order,
           Status: project.Status,
-          projectId: project.id
+          projectId: project.id,
         })),
-        totalProjects
+        totalProjects,
       };
 
       res.json(response);
     });
   });
 };
+
 
 exports.updateProject = async(req, res ) => {
   const { ProjectName, Projectid, projstatus, editprojmodalisalesval } = req.body;
@@ -496,8 +508,10 @@ exports.updateProject = async(req, res ) => {
 
 exports.totalHrs = (req, res) => {
   const employeeId = req.query.employeeId;
-  const projectNames = req.query.projectNames; 
-  const token = req.query.token; 
+  const projectNames = req.query.projectNames;
+  const token = req.query.token;
+
+  
 
   if (!token) {
     return res.status(400).send('Token is required');
@@ -728,6 +742,7 @@ exports.totalHrs = (req, res) => {
       });
   }
 };
+
 
 exports.YTSWIPhrs = (req, res) => {
   const employeeId = req.query.employeeId;
